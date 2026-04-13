@@ -138,7 +138,7 @@ class Dashboard extends Component
     {
         $this->novedadesPendientes = NovedadNomina::with('empleado', 'concepto')
             ->pendientes()
-            ->orderBy('fecha_novedad')
+            ->orderBy('fecha')
             ->limit(10)
             ->get()
             ->map(function($novedad) {
@@ -147,7 +147,7 @@ class Dashboard extends Component
                     'empleado' => $novedad->empleado->nombre_completo,
                     'concepto' => $novedad->concepto->nombre,
                     'valor' => $novedad->valor_total,
-                    'fecha' => $novedad->fecha_novedad->format('d/m/Y'),
+                    'fecha' => $novedad->fecha->format('d/m/Y'),
                     'requiere_aprobacion' => $novedad->requiere_aprobacion,
                 ];
             })

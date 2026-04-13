@@ -196,7 +196,7 @@ class LiquidacionService
         
         // Obtener novedades del empleado para este período
         $novedades = NovedadNomina::where('empleado_id', $empleado->id)
-            ->where('periodo_nomina_id', $nomina->periodo_nomina_id)
+            ->where('periodo_id', $nomina->periodo_nomina_id)
             ->where('estado', 'pendiente')
             ->get();
         
@@ -301,7 +301,7 @@ class LiquidacionService
         
         // Obtener novedades de deducciones
         $novedades = NovedadNomina::where('empleado_id', $empleado->id)
-            ->where('periodo_nomina_id', $nomina->periodo_nomina_id)
+            ->where('periodo_id', $nomina->periodo_nomina_id)
             ->where('estado', 'pendiente')
             ->get();
         

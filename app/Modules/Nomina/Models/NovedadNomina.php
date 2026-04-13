@@ -4,176 +4,123 @@ namespace App\Modules\Nomina\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
-use Illuminate\Database\Eloquent\Factories\HasFactory;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Spatie\Activitylog\Traits\LogsActivity;
-use Spatie\Activitylog\LogOptions;
-use App\Models\User;
 
 class NovedadNomina extends Model
 {
-    use HasFactory, SoftDeletes, LogsActivity;
+    use SoftDeletes;
 
     protected $table = 'novedades_nomina';
 
     protected $fillable = [
-        'empleado_id',
-        'concepto_nomina_id',
-        'periodo_nomina_id',
-        'nomina_id',
-        'fecha_novedad',
-        'fecha_inicio',
-        'fecha_fin',
-        'cantidad',
-        'valor_unitario',
-        'porcentaje',
-        'valor_total',
-        'descripcion',
-        'observaciones',
-        'referencia',
-        'estado',
-        'procesada',
-        'requiere_aprobacion',
-        'aprobado_by',
-        'fecha_aprobacion',
-        'created_by',
-        'updated_by',
+        'empleado_id', 'concepto_id', 'periodo_id', 'nomina_id',
+        'tipo_novedad', 'fecha', 'cantidad', 'unidad',
+        'valor_unitario', 'valor_total', 'porcentaje_recargo',
+        'aplica_formula', 'formula', 'estado', 'observaciones',
+        'archivo_soporte', 'aprobado_by', 'fecha_aprobacion',
+        'motivo_rechazo', 'created_by', 'updated_by',
     ];
+
+    protected $appends = ['procesada'];
 
     protected $casts = [
-        'fecha_novedad' => 'date',
-        'fecha_inicio' => 'date',
-        'fecha_fin' => 'date',
-        'fecha_aprobacion' => 'datetime',
-        'cantidad' => 'decimal:2',
+        'fecha' => 'date',
+        'cantidad' => 'integer',
         'valor_unitario' => 'decimal:2',
-        'porcentaje' => 'decimal:2',
         'valor_total' => 'decimal:2',
-        'procesada' => 'boolean',
-        'requiere_aprobacion' => 'boolean',
+        'porcentaje_recargo' => 'decimal:2',
+        'aplica_formula' => 'boolean',
+        'fecha_aprobacion' => 'datetime',
     ];
 
-    /**
-     * Configuración de Activity Log
-     */
-    public function getActivitylogOptions(): LogOptions
+    // RELACIONES
+    public function empleado() { return $this->belongsTo(Empleado::class); }
+    public function concepto() { return $this->belongsTo(ConceptoNomina::class); }
+    public function periodo() { return $this->belongsTo(PeriodoNomina::class); }
+    public function nomina() { return $this->belongsTo(Nomina::class); }
+
+    // SCOPES
+    public function scopePendientes($q) { return $q->where('estado', 'pendiente'); }
+    public function scopeAprobadas($q) { return $q->where('estado', 'aprobada'); }
+    public function scopeDelPeriodo($q, $p) { return $q->where('periodo_id', $p); }
+
+    public function getProcesadaAttribute(): bool
     {
-        return LogOptions::defaults()
-            ->logOnly(['*'])
-            ->logOnlyDirty()
-            ->dontSubmitEmptyLogs();
+        return $this->estado === 'aplicada';
     }
 
-    /**
-     * Relación con empleado
-     */
-    public function empleado(): BelongsTo
+    // CÁLCULO AUTOMÁTICO
+    public function calcularValor(): void
     {
-        return $this->belongsTo(Empleado::class, 'empleado_id');
+        if (!$this->empleado) $this->load('empleado');
+        
+        $salario = $this->empleado->salario_basico ?? 0;
+        $cantidad = $this->cantidad ?? 0;
+
+        if ($this->concepto && $this->concepto->formula) {
+            $this->valor_total = $this->evaluarFormula($this->concepto->formula, $salario, $cantidad);
+            $this->valor_unitario = $cantidad > 0 ? round($this->valor_total / $cantidad, 2) : 0;
+        } elseif ($this->porcentaje_recargo) {
+            $factor = 1 + ($this->porcentaje_recargo / 100);
+            $this->valor_unitario = round(($salario / 240) * $factor, 2);
+            $this->valor_total = round($this->valor_unitario * $cantidad, 2);
+        } else {
+            $this->valor_total = round($this->valor_unitario * $cantidad, 2);
+        }
     }
 
-    /**
-     * Relación con concepto
-     */
-    public function concepto(): BelongsTo
+    private function evaluarFormula(string $formula, float $salario, int $cantidad): float
     {
-        return $this->belongsTo(ConceptoNomina::class, 'concepto_nomina_id');
+        $formula = str_replace(['salario_basico', 'salario', 'cantidad', 'ibc'], [$salario, $salario, $cantidad, $salario], $formula);
+        $formula = preg_replace('/\s+/', '', $formula);
+        
+        if (!preg_match('/^[0-9+\-*\/().]+$/', $formula)) return 0;
+
+        try {
+            $resultado = 0;
+            eval('$resultado = ' . $formula . ';');
+            return round($resultado, 2);
+        } catch (\Exception $e) {
+            \Log::error("Error fórmula: {$formula}", ['error' => $e->getMessage()]);
+            return 0;
+        }
     }
 
-    /**
-     * Relación con período
-     */
-    public function periodo(): BelongsTo
+    protected static function boot()
     {
-        return $this->belongsTo(PeriodoNomina::class, 'periodo_nomina_id');
+        parent::boot();
+
+        static::creating(function ($nov) {
+            if (!$nov->concepto && $nov->concepto_id) {
+                $nov->concepto = ConceptoNomina::find($nov->concepto_id);
+            }
+            if ($nov->concepto) {
+                $nov->tipo_novedad = $nov->tipo_novedad ?? $nov->concepto->codigo;
+                $nov->aplica_formula = $nov->concepto->tipo_calculo === 'formula';
+                $nov->formula = $nov->concepto->formula;
+                $nov->porcentaje_recargo = $nov->concepto->porcentaje_recargo;
+            }
+            $nov->calcularValor();
+        });
+
+        static::updating(function ($nov) {
+            if ($nov->isDirty(['cantidad', 'valor_unitario', 'empleado_id'])) {
+                $nov->calcularValor();
+            }
+        });
     }
 
-    /**
-     * Relación con nómina
-     */
-    public function nomina(): BelongsTo
+    // MÉTODOS DE ESTADO
+    public function aprobar($userId = null): bool
     {
-        return $this->belongsTo(Nomina::class, 'nomina_id');
+        if ($this->estado !== 'pendiente') return false;
+        $this->update(['estado' => 'aprobada', 'aprobado_by' => $userId ?? auth()->id(), 'fecha_aprobacion' => now()]);
+        return true;
     }
 
-    /**
-     * Usuario que aprobó
-     */
-    public function aprobadoPor(): BelongsTo
+    public function rechazar(string $motivo, $userId = null): bool
     {
-        return $this->belongsTo(User::class, 'aprobado_by');
-    }
-
-    /**
-     * Usuario que creó
-     */
-    public function createdBy(): BelongsTo
-    {
-        return $this->belongsTo(User::class, 'created_by');
-    }
-
-    /**
-     * Usuario que actualizó
-     */
-    public function updatedBy(): BelongsTo
-    {
-        return $this->belongsTo(User::class, 'updated_by');
-    }
-
-    /**
-     * Aprobar novedad
-     */
-    public function aprobar(User $usuario): bool
-    {
-        $this->aprobado_by = $usuario->id;
-        $this->fecha_aprobacion = now();
-        return $this->save();
-    }
-
-    /**
-     * Rechazar novedad
-     */
-    public function rechazar(): bool
-    {
-        $this->estado = 'rechazada';
-        return $this->save();
-    }
-
-    /**
-     * Anular novedad
-     */
-    public function anular(): bool
-    {
-        $this->estado = 'anulada';
-        return $this->save();
-    }
-
-    /**
-     * Scopes
-     */
-    public function scopePendientes($query)
-    {
-        return $query->where('estado', 'pendiente');
-    }
-
-    public function scopeProcesadas($query)
-    {
-        return $query->where('procesada', true);
-    }
-
-    public function scopePorPeriodo($query, int $periodoId)
-    {
-        return $query->where('periodo_nomina_id', $periodoId);
-    }
-
-    public function scopePorEmpleado($query, int $empleadoId)
-    {
-        return $query->where('empleado_id', $empleadoId);
-    }
-
-    public function scopeRequierenAprobacion($query)
-    {
-        return $query->where('requiere_aprobacion', true)
-                     ->whereNull('aprobado_by');
+        if ($this->estado !== 'pendiente') return false;
+        $this->update(['estado' => 'rechazada', 'motivo_rechazo' => $motivo, 'aprobado_by' => $userId ?? auth()->id()]);
+        return true;
     }
 }

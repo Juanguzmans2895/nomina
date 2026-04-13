@@ -153,24 +153,14 @@ class ImportacionNovedades extends Component
             } elseif (!$concepto->activo) {
                 $errores[] = "Concepto {$codigoConcepto} está inactivo";
             } else {
-                $datos['concepto_nomina_id'] = $concepto->id;
-                $datos['concepto_nombre'] = $concepto->nombre;
-                $datos['concepto_codigo'] = $codigoConcepto;
-                $datos['clasificacion'] = $concepto->clasificacion;
-            }
-        }
-
-        // Fecha de novedad
+                    $datos['concepto_id'] = $concepto->id;
         $fechaNovedad = trim($fila[2] ?? '');
         if (empty($fechaNovedad)) {
             $errores[] = 'Fecha vacía';
         } else {
             try {
                 $fecha = \Carbon\Carbon::parse($fechaNovedad);
-                $datos['fecha_novedad'] = $fecha->format('Y-m-d');
-            } catch (\Exception $e) {
-                $errores[] = 'Fecha inválida';
-            }
+                    $datos['fecha'] = $fecha->format('Y-m-d');
         }
 
         // Cantidad
@@ -192,8 +182,8 @@ class ImportacionNovedades extends Component
             'errores' => $errores,
             'datos' => $datos,
         ];
-    }
-
+    }}}}
+    
     protected function calcularEstadisticas()
     {
         $total = count($this->novedadesPreview);
@@ -221,9 +211,9 @@ class ImportacionNovedades extends Component
             foreach ($this->novedadesPreview as $novedad) {
                 // Verificar si ya existe
                 $existe = NovedadNomina::where('empleado_id', $novedad['empleado_id'])
-                    ->where('concepto_nomina_id', $novedad['concepto_nomina_id'])
-                    ->where('periodo_nomina_id', $this->periodoNominaId)
-                    ->where('fecha_novedad', $novedad['fecha_novedad'])
+                    ->where('concepto_id', $novedad['concepto_id'])
+                    ->where('periodo_id', $this->periodoNominaId)
+                    ->where('fecha', $novedad['fecha'])
                     ->exists();
 
                 if ($existe && !$this->sobreescribirExistentes) {
@@ -233,18 +223,18 @@ class ImportacionNovedades extends Component
 
                 if ($existe && $this->sobreescribirExistentes) {
                     NovedadNomina::where('empleado_id', $novedad['empleado_id'])
-                        ->where('concepto_nomina_id', $novedad['concepto_nomina_id'])
-                        ->where('periodo_nomina_id', $this->periodoNominaId)
-                        ->where('fecha_novedad', $novedad['fecha_novedad'])
+                        ->where('concepto_id', $novedad['concepto_id'])
+                        ->where('periodo_id', $this->periodoNominaId)
+                        ->where('fecha', $novedad['fecha'])
                         ->delete();
                 }
 
                 // Crear novedad
                 NovedadNomina::create([
                     'empleado_id' => $novedad['empleado_id'],
-                    'concepto_nomina_id' => $novedad['concepto_nomina_id'],
-                    'periodo_nomina_id' => $this->periodoNominaId,
-                    'fecha_novedad' => $novedad['fecha_novedad'],
+                    'concepto_id' => $novedad['concepto_id'],
+                    'periodo_id' => $this->periodoNominaId,
+                    'fecha' => $novedad['fecha'],
                     'cantidad' => $novedad['cantidad'],
                     'valor_unitario' => $novedad['valor_unitario'],
                     'valor_total' => $novedad['valor_total'],

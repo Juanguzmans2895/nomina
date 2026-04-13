@@ -21,15 +21,15 @@ class NovedadNominaRequest extends FormRequest
     {
         return [
             'empleado_id' => 'required|exists:empleados,id',
-            'concepto_nomina_id' => 'required|exists:conceptos_nomina,id',
-            'periodo_nomina_id' => 'required|exists:periodos_nomina,id',
-            'fecha_novedad' => 'required|date',
+            'concepto_id' => 'required|exists:conceptos_nomina,id',
+            'periodo_id' => 'required|exists:periodos_nomina,id',
+            'fecha' => 'required|date',
             'cantidad' => 'required|numeric|min:0',
             'valor_unitario' => 'required|numeric|min:0',
             'valor_total' => 'nullable|numeric|min:0',
             'observaciones' => 'nullable|string|max:500',
             'requiere_aprobacion' => 'nullable|boolean',
-            'estado' => 'nullable|in:pendiente,aprobada,rechazada,procesada',
+            'estado' => 'nullable|in:pendiente,aprobada,aplicada,rechazada',
         ];
     }
 
@@ -41,11 +41,11 @@ class NovedadNominaRequest extends FormRequest
         return [
             'empleado_id.required' => 'El empleado es obligatorio',
             'empleado_id.exists' => 'El empleado seleccionado no existe',
-            'concepto_nomina_id.required' => 'El concepto es obligatorio',
-            'concepto_nomina_id.exists' => 'El concepto seleccionado no existe',
-            'periodo_nomina_id.required' => 'El período es obligatorio',
-            'periodo_nomina_id.exists' => 'El período seleccionado no existe',
-            'fecha_novedad.required' => 'La fecha de la novedad es obligatoria',
+            'concepto_id.required' => 'El concepto es obligatorio',
+            'concepto_id.exists' => 'El concepto seleccionado no existe',
+            'periodo_id.required' => 'El período es obligatorio',
+            'periodo_id.exists' => 'El período seleccionado no existe',
+            'fecha.required' => 'La fecha de la novedad es obligatoria',
             'cantidad.required' => 'La cantidad es obligatoria',
             'cantidad.min' => 'La cantidad debe ser mayor o igual a cero',
             'valor_unitario.required' => 'El valor unitario es obligatorio',
@@ -66,16 +66,16 @@ class NovedadNominaRequest extends FormRequest
             }
 
             // Validar que el concepto esté activo
-            if ($this->concepto_nomina_id) {
-                $concepto = \App\Modules\Nomina\Models\ConceptoNomina::find($this->concepto_nomina_id);
+            if ($this->concepto_id) {
+                $concepto = \App\Modules\Nomina\Models\ConceptoNomina::find($this->concepto_id);
                 
                 if ($concepto && !$concepto->activo) {
-                    $validator->errors()->add('concepto_nomina_id', 'El concepto seleccionado está inactivo');
+                    $validator->errors()->add('concepto_id', 'El concepto seleccionado está inactivo');
                 }
 
                 // Validar que el concepto sea de tipo novedad
                 if ($concepto && $concepto->tipo !== 'novedad') {
-                    $validator->errors()->add('concepto_nomina_id', 'Solo se pueden crear novedades con conceptos de tipo "novedad"');
+                    $validator->errors()->add('concepto_id', 'Solo se pueden crear novedades con conceptos de tipo "novedad"');
                 }
             }
 
@@ -89,37 +89,37 @@ class NovedadNominaRequest extends FormRequest
             }
 
             // Validar que el período esté abierto
-            if ($this->periodo_nomina_id) {
-                $periodo = \App\Modules\Nomina\Models\PeriodoNomina::find($this->periodo_nomina_id);
+            if ($this->periodo_id) {
+                $periodo = \App\Modules\Nomina\Models\PeriodoNomina::find($this->periodo_id);
                 
                 if ($periodo && $periodo->estado === 'cerrado') {
-                    $validator->errors()->add('periodo_nomina_id', 'No se pueden crear novedades en un período cerrado');
+                    $validator->errors()->add('periodo_id', 'No se pueden crear novedades en un período cerrado');
                 }
             }
 
             // Validar que la fecha esté dentro del período
-            if ($this->fecha_novedad && $this->periodo_nomina_id) {
-                $periodo = \App\Modules\Nomina\Models\PeriodoNomina::find($this->periodo_nomina_id);
+            if ($this->fecha && $this->periodo_id) {
+                $periodo = \App\Modules\Nomina\Models\PeriodoNomina::find($this->periodo_id);
                 
                 if ($periodo) {
-                    $fechaNovedad = \Carbon\Carbon::parse($this->fecha_novedad);
+                    $fechaNovedad = \Carbon\Carbon::parse($this->fecha);
                     
                     if ($fechaNovedad->lt($periodo->fecha_inicio) || $fechaNovedad->gt($periodo->fecha_fin)) {
-                        $validator->errors()->add('fecha_novedad', 'La fecha de la novedad debe estar dentro del período seleccionado');
+                        $validator->errors()->add('fecha', 'La fecha de la novedad debe estar dentro del período seleccionado');
                     }
                 }
             }
 
             // Validar duplicados
-            if ($this->empleado_id && $this->concepto_nomina_id && $this->fecha_novedad && !$this->route('novedad')) {
+            if ($this->empleado_id && $this->concepto_id && $this->fecha && !$this->route('novedad')) {
                 $existe = \App\Modules\Nomina\Models\NovedadNomina::where('empleado_id', $this->empleado_id)
-                    ->where('concepto_nomina_id', $this->concepto_nomina_id)
-                    ->where('fecha_novedad', $this->fecha_novedad)
+                    ->where('concepto_id', $this->concepto_id)
+                    ->where('fecha', $this->fecha)
                     ->where('estado', '!=', 'rechazada')
                     ->exists();
                 
                 if ($existe) {
-                    $validator->errors()->add('concepto_nomina_id', 'Ya existe una novedad para este empleado, concepto y fecha');
+                    $validator->errors()->add('concepto_id', 'Ya existe una novedad para este empleado, concepto y fecha');
                 }
             }
         });

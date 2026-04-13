@@ -7,8 +7,9 @@ use Illuminate\Http\Request;
 use App\Modules\Nomina\Models\Empleado;
 use App\Modules\Nomina\Models\Nomina;
 use App\Modules\Nomina\Models\Contrato;
-use App\Modules\Nomina\Models\Provision;
-use App\Modules\Nomina\Models\DetalleNomina;
+use App\Modules\Nomina\Models\NovedadNomina;
+use App\Modules\Nomina\Models\ConceptoNomina;
+use App\Modules\Nomina\Models\PeriodoNomina;
 use Carbon\Carbon;
 
 class NominaController extends Controller
@@ -145,15 +146,15 @@ class NominaController extends Controller
         // Novedades Pendientes (detalles de las últimas 10)
         $novedadesPendientesDetalle = \App\Modules\Nomina\Models\NovedadNomina::with('empleado', 'concepto')
             ->where('estado', 'pendiente')
-            ->orderByDesc('fecha_novedad')
+            ->orderByDesc('fecha')
             ->take(10)
             ->get()
             ->map(function($novedad) {
                 return [
                     'empleado' => $novedad->empleado->nombre_completo ?? 'N/A',
                     'concepto' => $novedad->concepto->nombre ?? 'N/A',
-                    'valor' => $novedad->valor,
-                    'fecha' => $novedad->fecha_novedad->format('d/m/Y'),
+                    'valor' => $novedad->valor_total,
+                    'fecha' => $novedad->fecha,
                 ];
             });
 
@@ -229,6 +230,75 @@ class NominaController extends Controller
     public function dashboardNomina()
     {
         return $this->dashboard();
+    }
+
+    public function index(Request $request)
+    {
+        $query = NovedadNomina::with(['empleado', 'concepto', 'periodo']);
+ 
+        // ══════════════════════════════════════════════════════════
+        // FILTRO DE ESTADO - CORRECCIÓN CRÍTICA
+        // ══════════════════════════════════════════════════════════
+        if ($request->filled('estado')) {
+            $estado = $request->estado;
+            
+            // Si buscan "procesada", traducir a "aplicada"
+            if ($estado === 'procesada') {
+                $query->where('estado', 'aplicada');
+            } else {
+                $query->where('estado', $estado);
+            }
+        }
+ 
+        // Filtro por empleado
+        if ($request->filled('empleado')) {
+            $query->whereHas('empleado', function ($q) use ($request) {
+                $q->where('nombre_completo', 'like', '%' . $request->empleado . '%')
+                  ->orWhere('primer_nombre', 'like', '%' . $request->empleado . '%')
+                  ->orWhere('primer_apellido', 'like', '%' . $request->empleado . '%')
+                  ->orWhere('numero_documento', 'like', '%' . $request->empleado . '%');
+            });
+        }
+ 
+        // Filtro por concepto
+        if ($request->filled('concepto')) {
+            $query->whereHas('concepto', function ($q) use ($request) {
+                $q->where('codigo', 'like', '%' . $request->concepto . '%')
+                  ->orWhere('nombre', 'like', '%' . $request->concepto . '%');
+            });
+        }
+ 
+        // Filtro por período
+        if ($request->filled('periodo')) {
+            if ($request->periodo === 'actual') {
+                $periodoActual = PeriodoNomina::where('codigo', now()->format('Ym'))->first();
+                if ($periodoActual) {
+                    $query->where('periodo_id', $periodoActual->id);
+                }
+            } else {
+                $query->where('periodo_id', $request->periodo);
+            }
+        }
+ 
+        // Ordenar por más recientes
+        $query->orderBy('created_at', 'desc');
+ 
+        // Paginar
+        $novedades = $query->paginate(20);
+ 
+        // ══════════════════════════════════════════════════════════
+        // CONTADORES CORREGIDOS
+        // ══════════════════════════════════════════════════════════
+        $totalNovedades = NovedadNomina::count();
+        $pendientes = NovedadNomina::where('estado', 'pendiente')->count();
+        $procesadas = NovedadNomina::where('estado', 'aplicada')->count(); // ← CORREGIDO
+ 
+        return view('nomina.gestion-novedades', compact(
+            'novedades',
+            'totalNovedades',
+            'pendientes',
+            'procesadas'
+        ));
     }
 
     /**
@@ -578,22 +648,22 @@ class NominaController extends Controller
         // Filtro por estado
         if ($request->filled('estado')) {
             if ($request->estado === 'procesada') {
-                $query->where('procesada', true);
+                $query->where('estado', 'aplicada');
             } elseif ($request->estado === 'pendiente') {
-                $query->where('procesada', false);
+                $query->where('estado', 'pendiente');
             }
         }
         
         // Filtro por período
         if ($request->filled('periodo')) {
             if ($request->periodo === 'actual') {
-                $query->whereMonth('fecha_novedad', now()->month) // ✅ CAMBIAR 'fecha' a 'fecha_novedad'
-                    ->whereYear('fecha_novedad', now()->year);   // ✅ CAMBIAR 'fecha' a 'fecha_novedad'
+                $query->whereMonth('fecha', now()->month)
+                    ->whereYear('fecha', now()->year);
             }
         }
         
         // Ordenar y paginar
-        $novedades = $query->orderBy('fecha_novedad', 'desc') // ✅ CAMBIAR 'fecha' a 'fecha_novedad'
+        $novedades = $query->orderBy('fecha', 'desc')
                         ->orderBy('created_at', 'desc')
                         ->paginate(15);
         
@@ -984,19 +1054,17 @@ class NominaController extends Controller
     {
         $validated = $request->validate([
             'empleado_id' => 'required|exists:empleados,id',
-            'concepto_nomina_id' => 'required|exists:conceptos_nomina,id',
-            'fecha_novedad' => 'required|date',
+            'concepto_id' => 'required|exists:conceptos_nomina,id',
+            'fecha' => 'required|date',
             'cantidad' => 'required|numeric|min:0',
             'valor_unitario' => 'required|numeric|min:0',
-            'periodo_nomina_id' => 'nullable|exists:periodos_nomina,id',
+            'periodo_id' => 'nullable|exists:periodos_nomina,id',
             'observaciones' => 'nullable|string',
-            'procesada' => 'nullable|boolean',
         ]);
         
         // Calcular valor total
         $validated['valor_total'] = $validated['cantidad'] * $validated['valor_unitario'];
-        $validated['procesada'] = $request->has('procesada');
-        $validated['estado'] = 'pendiente';
+        $validated['estado'] = $request->has('procesada') ? 'aplicada' : 'pendiente';
         $validated['created_by'] = auth()->id();
         
         \App\Modules\Nomina\Models\NovedadNomina::create($validated);
@@ -1043,18 +1111,17 @@ class NominaController extends Controller
         
         $validated = $request->validate([
             'empleado_id' => 'required|exists:empleados,id',
-            'concepto_nomina_id' => 'required|exists:conceptos_nomina,id',
-            'fecha_novedad' => 'required|date',
+            'concepto_id' => 'required|exists:conceptos_nomina,id',
+            'fecha' => 'required|date',
             'cantidad' => 'required|numeric|min:0',
             'valor_unitario' => 'required|numeric|min:0',
-            'periodo_nomina_id' => 'nullable|exists:periodos_nomina,id',
+            'periodo_id' => 'nullable|exists:periodos_nomina,id',
             'observaciones' => 'nullable|string',
-            'procesada' => 'nullable|boolean',
         ]);
         
         // Calcular valor total
         $validated['valor_total'] = $validated['cantidad'] * $validated['valor_unitario'];
-        $validated['procesada'] = $request->has('procesada');
+        $validated['estado'] = $request->has('procesada') ? 'aplicada' : 'pendiente';
         $validated['updated_by'] = auth()->id();
         
         $novedad->update($validated);
@@ -1516,13 +1583,13 @@ class NominaController extends Controller
             foreach ($datosImportacion['novedades'] as $novedad) {
                 \App\Modules\Nomina\Models\NovedadNomina::create([
                     'empleado_id' => $novedad['empleado_id'],
-                    'concepto_nomina_id' => $novedad['concepto_id'],
-                    'fecha_novedad' => $novedad['fecha'],
+                    'concepto_id' => $novedad['concepto_id'],
+                    'fecha' => $novedad['fecha'],
                     'cantidad' => $novedad['cantidad'],
                     'valor_unitario' => $novedad['valor_unitario'],
                     'valor_total' => $novedad['valor_total'],
                     'observaciones' => $novedad['observaciones'] ?? '',
-                    'estado' => 'pendiente', // ✅ AGREGAR
+                    'estado' => 'pendiente',
                     'procesada' => false,
                     'requiere_aprobacion' => false, // ✅ AGREGAR
                     'created_by' => auth()->id(),
@@ -1551,6 +1618,226 @@ class NominaController extends Controller
             return redirect()->route('nomina.novedades.importar')
                 ->with('error', 'Error al guardar las novedades: ' . $e->getMessage());
         }
+    }
+
+    /**
+     * Listado de novedades con filtros CORREGIDOS
+     */
+    public function indexNovedades(Request $request)
+    {
+        $query = NovedadNomina::with(['empleado', 'concepto', 'periodo']);
+ 
+        // ══════════════════════════════════════════════════════════
+        // FILTRO DE ESTADO - CORRECCIÓN CRÍTICA
+        // ══════════════════════════════════════════════════════════
+        if ($request->filled('estado')) {
+            $estado = $request->estado;
+            
+            // Si buscan "procesada", traducir a "aplicada"
+            if ($estado === 'procesada') {
+                $query->where('estado', 'aplicada');
+            } else {
+                $query->where('estado', $estado);
+            }
+        }
+ 
+        // Filtro por empleado
+        if ($request->filled('empleado')) {
+            $query->whereHas('empleado', function ($q) use ($request) {
+                $q->where('nombre_completo', 'like', '%' . $request->empleado . '%')
+                  ->orWhere('numero_documento', 'like', '%' . $request->empleado . '%');
+            });
+        }
+ 
+        // Filtro por concepto
+        if ($request->filled('concepto')) {
+            $query->whereHas('concepto', function ($q) use ($request) {
+                $q->where('codigo', 'like', '%' . $request->concepto . '%')
+                  ->orWhere('nombre', 'like', '%' . $request->concepto . '%');
+            });
+        }
+ 
+        // Filtro por período
+        if ($request->filled('periodo')) {
+            if ($request->periodo === 'actual') {
+                $periodoActual = PeriodoNomina::where('codigo', now()->format('Ym'))->first();
+                if ($periodoActual) {
+                    $query->where('periodo_id', $periodoActual->id);
+                }
+            } else {
+                $query->where('periodo_id', $request->periodo);
+            }
+        }
+ 
+        // Ordenar por más recientes
+        $query->orderBy('created_at', 'desc');
+ 
+        // Paginar
+        $novedades = $query->paginate(15);
+ 
+        // Contadores para resumen
+        $totalNovedades = NovedadNomina::count();
+        $pendientes = NovedadNomina::where('estado', 'pendiente')->count();
+        $procesadas = NovedadNomina::where('estado', 'aplicada')->count(); // ← CORREGIDO
+ 
+        return view('nomina.novedades.gestion-novedades', compact(
+            'novedades',
+            'totalNovedades',
+            'pendientes',
+            'procesadas'
+        ));
+    }
+ 
+    /**
+     * Formulario para crear novedad
+     */
+    public function createNovedad()
+    {
+        $empleados = Empleado::where('estado', 'activo')
+            ->orderBy('primer_nombre')
+            ->get();
+        
+        $conceptos = ConceptoNomina::where('activo', true)
+            ->orderBy('codigo')
+            ->get();
+        
+        $periodos = PeriodoNomina::where('estado', 'activo')
+            ->where('anio', '>=', now()->year - 1)
+            ->orderBy('anio', 'desc')
+            ->orderBy('mes', 'desc')
+            ->get();
+ 
+        return view('nomina.novedades.create', compact('empleados', 'conceptos', 'periodos'));
+    }
+ 
+    /**
+     * Guardar nueva novedad
+     */
+    public function storeNovedad(Request $request)
+    {
+        $validated = $request->validate([
+            'empleado_id' => 'required|exists:empleados,id',
+            'concepto_id' => 'required|exists:conceptos_nomina,id',
+            'periodo_id' => 'required|exists:periodos_nomina,id',
+            'fecha' => 'required|date',
+            'cantidad' => 'required|numeric|min:0',
+            'valor_unitario' => 'nullable|numeric|min:0',
+            'valor_total' => 'required|numeric|min:0',
+            'observaciones' => 'nullable|string',
+        ]);
+ 
+        $novedad = NovedadNomina::create(array_merge($validated, [
+            'estado' => 'pendiente',
+            'created_by' => auth()->id(),
+        ]));
+ 
+        return redirect()->route('nomina.novedades.index')
+            ->with('success', 'Novedad creada exitosamente');
+    }
+ 
+    /**
+     * Editar novedad
+     */
+    public function editNovedad($id)
+    {
+        $novedad = NovedadNomina::with(['empleado', 'concepto', 'periodo'])->findOrFail($id);
+        
+        $empleados = Empleado::where('estado', 'activo')->orderBy('primer_nombre')->get();
+        $conceptos = ConceptoNomina::where('activo', true)->orderBy('codigo')->get();
+        $periodos = PeriodoNomina::where('estado', 'activo')
+            ->where('anio', '>=', now()->year - 1)
+            ->orderBy('anio', 'desc')
+            ->orderBy('mes', 'desc')
+            ->get();
+ 
+        return view('nomina.novedades.edit', compact('novedad', 'empleados', 'conceptos', 'periodos'));
+    }
+ 
+    /**
+     * Actualizar novedad
+     */
+    public function updateNovedad(Request $request, $id)
+    {
+        $novedad = NovedadNomina::findOrFail($id);
+ 
+        // Solo permitir editar si está pendiente
+        if ($novedad->estado !== 'pendiente') {
+            return redirect()->back()
+                ->with('error', 'No se puede editar una novedad que ya fue procesada');
+        }
+ 
+        $validated = $request->validate([
+            'empleado_id' => 'required|exists:empleados,id',
+            'concepto_id' => 'required|exists:conceptos_nomina,id',
+            'periodo_id' => 'required|exists:periodos_nomina,id',
+            'fecha' => 'required|date',
+            'cantidad' => 'required|numeric|min:0',
+            'valor_unitario' => 'nullable|numeric|min:0',
+            'valor_total' => 'required|numeric|min:0',
+            'observaciones' => 'nullable|string',
+        ]);
+ 
+        $novedad->update(array_merge($validated, [
+            'updated_by' => auth()->id(),
+        ]));
+ 
+        return redirect()->route('nomina.novedades.index')
+            ->with('success', 'Novedad actualizada exitosamente');
+    }
+ 
+    /**
+     * Eliminar novedad
+     */
+    public function destroyNovedad($id)
+    {
+        $novedad = NovedadNomina::findOrFail($id);
+ 
+        // Solo permitir eliminar si está pendiente
+        if ($novedad->estado !== 'pendiente') {
+            return redirect()->back()
+                ->with('error', 'No se puede eliminar una novedad que ya fue procesada');
+        }
+ 
+        $novedad->delete();
+ 
+        return redirect()->route('nomina.novedades.index')
+            ->with('success', 'Novedad eliminada exitosamente');
+    }
+ 
+    /**
+     * Aprobar novedad
+     */
+    public function aprobarNovedad($id)
+    {
+        $novedad = NovedadNomina::findOrFail($id);
+ 
+        if ($novedad->aprobar(auth()->id())) {
+            return redirect()->back()
+                ->with('success', 'Novedad aprobada exitosamente');
+        }
+ 
+        return redirect()->back()
+            ->with('error', 'No se pudo aprobar la novedad');
+    }
+ 
+    /**
+     * Rechazar novedad
+     */
+    public function rechazarNovedad(Request $request, $id)
+    {
+        $request->validate([
+            'motivo_rechazo' => 'required|string|max:500',
+        ]);
+ 
+        $novedad = NovedadNomina::findOrFail($id);
+ 
+        if ($novedad->rechazar($request->motivo_rechazo, auth()->id())) {
+            return redirect()->back()
+                ->with('success', 'Novedad rechazada');
+        }
+ 
+        return redirect()->back()
+            ->with('error', 'No se pudo rechazar la novedad');
     }
 
 }

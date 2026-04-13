@@ -6,9 +6,6 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
-    /**
-     * Run the migrations.
-     */
     public function up(): void
     {
         Schema::create('novedades_nomina', function (Blueprint $table) {
@@ -16,34 +13,36 @@ return new class extends Migration
             
             // Relaciones
             $table->foreignId('empleado_id')->constrained('empleados')->cascadeOnDelete();
-            $table->foreignId('concepto_nomina_id')->constrained('conceptos_nomina')->cascadeOnDelete();
-            $table->foreignId('periodo_nomina_id')->nullable()->constrained('periodos_nomina')->nullOnDelete();
+            $table->foreignId('concepto_id')->constrained('conceptos_nomina')->cascadeOnDelete();
+            $table->foreignId('periodo_id')->nullable()->constrained('periodos_nomina')->nullOnDelete();
             $table->foreignId('nomina_id')->nullable()->constrained('nominas')->nullOnDelete();
             
-            // Datos de la Novedad
-            $table->date('fecha_novedad');
-            $table->date('fecha_inicio')->nullable();
-            $table->date('fecha_fin')->nullable();
+            // Información de la novedad
+            $table->string('tipo_novedad', 50); // hora_extra, incapacidad, bonificacion, descuento, etc.
+            $table->date('fecha');
+            $table->integer('cantidad')->default(0); // Horas, días, unidades
+            $table->string('unidad', 20)->default('unidad'); // horas, dias, unidad, porcentaje
             
             // Valores
-            $table->decimal('cantidad', 10, 2)->nullable(); // Para horas, días, etc.
-            $table->decimal('valor_unitario', 15, 2)->nullable();
-            $table->decimal('porcentaje', 5, 2)->nullable();
-            $table->decimal('valor_total', 15, 2);
+            $table->decimal('valor_unitario', 15, 2)->default(0);
+            $table->decimal('valor_total', 15, 2)->default(0);
+            $table->decimal('porcentaje_recargo', 5, 2)->nullable(); // Para horas extras
             
-            // Información Adicional
-            $table->text('descripcion')->nullable();
-            $table->text('observaciones')->nullable();
-            $table->string('referencia', 100)->nullable(); // Número de acta, autorización, etc.
+            // Fórmula y cálculo automático
+            $table->boolean('aplica_formula')->default(false);
+            $table->string('formula', 200)->nullable(); // Ej: "salario/240*1.25*cantidad"
             
             // Estado
-            $table->enum('estado', ['pendiente', 'aplicada', 'rechazada', 'anulada'])->default('pendiente');
-            $table->boolean('procesada')->default(false);
+            $table->enum('estado', ['pendiente', 'aprobada', 'aplicada', 'rechazada'])->default('pendiente');
+            
+            // Documentación
+            $table->text('observaciones')->nullable();
+            $table->string('archivo_soporte')->nullable();
             
             // Aprobación
-            $table->boolean('requiere_aprobacion')->default(false);
             $table->foreignId('aprobado_by')->nullable()->constrained('users')->nullOnDelete();
             $table->timestamp('fecha_aprobacion')->nullable();
+            $table->text('motivo_rechazo')->nullable();
             
             // Auditoría
             $table->foreignId('created_by')->nullable()->constrained('users')->nullOnDelete();
@@ -53,18 +52,15 @@ return new class extends Migration
             
             // Índices
             $table->index('empleado_id');
-            $table->index('concepto_nomina_id');
-            $table->index('periodo_nomina_id');
+            $table->index('concepto_id');
+            $table->index('periodo_id');
             $table->index('nomina_id');
-            $table->index('fecha_novedad');
+            $table->index('tipo_novedad');
             $table->index('estado');
-            $table->index('procesada');
+            $table->index('fecha');
         });
     }
 
-    /**
-     * Reverse the migrations.
-     */
     public function down(): void
     {
         Schema::dropIfExists('novedades_nomina');

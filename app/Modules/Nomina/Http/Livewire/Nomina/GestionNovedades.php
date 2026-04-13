@@ -22,15 +22,15 @@ class GestionNovedades extends Component
     
     // Campos del formulario
     public $empleado_id;
-    public $concepto_nomina_id;
-    public $periodo_nomina_id;
-    public $fecha_novedad;
+    public $concepto_id;
+    public $periodo_id;
+    public $fecha;
     public $cantidad = 1;
     public $valor_unitario = 0;
     public $valor_total = 0;
     public $observaciones;
-    public $requiere_aprobacion = false;
     public $estado = 'pendiente';
+    public $procesada = false;
     
     // Aprobación
     public $motivoRechazo;
@@ -46,9 +46,9 @@ class GestionNovedades extends Component
     {
         return [
             'empleado_id' => 'required|exists:empleados,id',
-            'concepto_nomina_id' => 'required|exists:conceptos_nomina,id',
-            'periodo_nomina_id' => 'required|exists:periodos_nomina,id',
-            'fecha_novedad' => 'required|date',
+            'concepto_id' => 'required|exists:conceptos_nomina,id',
+            'periodo_id' => 'required|exists:periodos_nomina,id',
+            'fecha' => 'required|date',
             'cantidad' => 'required|numeric|min:0',
             'valor_unitario' => 'required|numeric|min:0',
             'observaciones' => 'nullable|string|max:500',
@@ -57,9 +57,9 @@ class GestionNovedades extends Component
 
     protected $messages = [
         'empleado_id.required' => 'El empleado es obligatorio',
-        'concepto_nomina_id.required' => 'El concepto es obligatorio',
-        'periodo_nomina_id.required' => 'El período es obligatorio',
-        'fecha_novedad.required' => 'La fecha es obligatoria',
+        'concepto_id.required' => 'El concepto es obligatorio',
+        'periodo_id.required' => 'El período es obligatorio',
+        'fecha.required' => 'La fecha es obligatoria',
         'cantidad.required' => 'La cantidad es obligatoria',
         'cantidad.min' => 'La cantidad debe ser mayor o igual a cero',
         'valor_unitario.required' => 'El valor unitario es obligatorio',
@@ -77,11 +77,11 @@ class GestionNovedades extends Component
                       ->orWhere('numero_documento', 'like', "%{$this->search}%");
                 });
             })
-            ->when($this->filterPeriodo, fn($q) => $q->where('periodo_nomina_id', $this->filterPeriodo))
+            ->when($this->filterPeriodo, fn($q) => $q->where('periodo_id', $this->filterPeriodo))
             ->when($this->filterEstado, fn($q) => $q->where('estado', $this->filterEstado))
-            ->when($this->filterConcepto, fn($q) => $q->where('concepto_nomina_id', $this->filterConcepto))
+            ->when($this->filterConcepto, fn($q) => $q->where('concepto_id', $this->filterConcepto))
             ->when($this->filterEmpleado, fn($q) => $q->where('empleado_id', $this->filterEmpleado))
-            ->orderByDesc('fecha_novedad')
+            ->orderByDesc('fecha')
             ->paginate(20);
 
         $empleados = Empleado::activos()->orderBy('primer_apellido')->get();
@@ -108,10 +108,10 @@ class GestionNovedades extends Component
             ->first();
         
         if ($periodoActual) {
-            $this->periodo_nomina_id = $periodoActual->id;
+            $this->periodo_id = $periodoActual->id;
         }
         
-        $this->fecha_novedad = now()->format('Y-m-d');
+        $this->fecha = now()->format('Y-m-d');
         $this->showModal = true;
     }
 
@@ -133,15 +133,15 @@ class GestionNovedades extends Component
         $this->modalTitle = 'Editar Novedad';
         
         $this->empleado_id = $novedad->empleado_id;
-        $this->concepto_nomina_id = $novedad->concepto_nomina_id;
-        $this->periodo_nomina_id = $novedad->periodo_nomina_id;
-        $this->fecha_novedad = $novedad->fecha_novedad->format('Y-m-d');
+        $this->concepto_id = $novedad->concepto_id;
+        $this->periodo_id = $novedad->periodo_id;
+        $this->fecha = $novedad->fecha;
         $this->cantidad = $novedad->cantidad;
         $this->valor_unitario = $novedad->valor_unitario;
         $this->valor_total = $novedad->valor_total;
         $this->observaciones = $novedad->observaciones;
-        $this->requiere_aprobacion = $novedad->requiere_aprobacion;
         $this->estado = $novedad->estado;
+        $this->procesada = $novedad->procesada;
         
         $this->showModal = true;
     }
@@ -151,14 +151,14 @@ class GestionNovedades extends Component
         $this->validate();
 
         // Validaciones adicionales
-        $concepto = ConceptoNomina::find($this->concepto_nomina_id);
+        $concepto = ConceptoNomina::find($this->concepto_id);
         if (!$concepto || !$concepto->activo) {
-            $this->addError('concepto_nomina_id', 'El concepto seleccionado no está activo');
+            $this->addError('concepto_id', 'El concepto seleccionado no está activo');
             return;
         }
 
         if ($concepto->tipo !== 'novedad') {
-            $this->addError('concepto_nomina_id', 'Solo se pueden crear novedades con conceptos tipo "novedad"');
+            $this->addError('concepto_id', 'Solo se pueden crear novedades con conceptos tipo "novedad"');
             return;
         }
 
@@ -168,9 +168,9 @@ class GestionNovedades extends Component
             return;
         }
 
-        $periodo = PeriodoNomina::find($this->periodo_nomina_id);
+        $periodo = PeriodoNomina::find($this->periodo_id);
         if (!$periodo || $periodo->estado === 'cerrado') {
-            $this->addError('periodo_nomina_id', 'El período seleccionado está cerrado');
+            $this->addError('periodo_id', 'El período seleccionado está cerrado');
             return;
         }
 
@@ -182,16 +182,14 @@ class GestionNovedades extends Component
 
             $data = [
                 'empleado_id' => $this->empleado_id,
-                'concepto_nomina_id' => $this->concepto_nomina_id,
-                'periodo_nomina_id' => $this->periodo_nomina_id,
-                'fecha_novedad' => $this->fecha_novedad,
+                'concepto_id' => $this->concepto_id,
+                'periodo_id' => $this->periodo_id,
+                'fecha' => $this->fecha,
                 'cantidad' => $this->cantidad,
                 'valor_unitario' => $this->valor_unitario,
                 'valor_total' => $this->valor_total,
                 'observaciones' => $this->observaciones,
-                'requiere_aprobacion' => $concepto->requiere_aprobacion,
-                'estado' => $concepto->requiere_aprobacion ? 'pendiente' : 'aprobada',
-                'procesada' => false,
+                'estado' => $this->procesada ? 'aplicada' : 'pendiente',
                 'updated_by' => auth()->id(),
             ];
 
@@ -311,7 +309,7 @@ class GestionNovedades extends Component
     {
         try {
             $novedadesPendientes = NovedadNomina::where('estado', 'pendiente')
-                ->when($this->filterPeriodo, fn($q) => $q->where('periodo_nomina_id', $this->filterPeriodo))
+                ->when($this->filterPeriodo, fn($q) => $q->where('periodo_id', $this->filterPeriodo))
                 ->get();
 
             $contador = 0;
@@ -339,7 +337,7 @@ class GestionNovedades extends Component
             $nuevaNovedad = $novedadOriginal->replicate();
             $nuevaNovedad->estado = 'pendiente';
             $nuevaNovedad->procesada = false;
-            $nuevaNovedad->fecha_novedad = now();
+            $nuevaNovedad->fecha = now();
             $nuevaNovedad->created_by = auth()->id();
             $nuevaNovedad->save();
 
@@ -354,15 +352,16 @@ class GestionNovedades extends Component
     {
         $this->novedadId = null;
         $this->empleado_id = null;
-        $this->concepto_nomina_id = null;
-        $this->periodo_nomina_id = null;
-        $this->fecha_novedad = '';
+        $this->concepto_id = null;
+        $this->periodo_id = null;
+        $this->fecha = '';
         $this->cantidad = 1;
         $this->valor_unitario = 0;
         $this->valor_total = 0;
         $this->observaciones = '';
         $this->requiere_aprobacion = false;
         $this->estado = 'pendiente';
+        $this->procesada = false;
         
         $this->resetValidation();
     }

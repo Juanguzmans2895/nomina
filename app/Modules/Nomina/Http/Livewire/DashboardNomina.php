@@ -71,8 +71,8 @@ class DashboardNomina extends Component
     protected function cargarEstadisticasNovedades()
     {
         $this->novedadesPendientes = NovedadNomina::pendientes()
-            ->whereMonth('fecha_novedad', $this->mesActual)
-            ->whereYear('fecha_novedad', $this->anioActual)
+            ->whereMonth('fecha', $this->mesActual)
+            ->whereYear('fecha', $this->anioActual)
             ->count();
     }
 

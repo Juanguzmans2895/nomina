@@ -84,19 +84,19 @@
                                         <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                                             Concepto *
                                         </label>
-                                        <select name="concepto_nomina_id" required 
+                                        <select name="concepto_id" required 
                                                 class="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500"
                                                 {{ $novedad->procesada ? 'disabled' : '' }}>
                                             <option value="">Seleccione un concepto...</option>
                                             @foreach($conceptos as $concepto)
                                                 <option value="{{ $concepto->id }}" 
-                                                        {{ (old('concepto_nomina_id', $novedad->concepto_nomina_id) == $concepto->id) ? 'selected' : '' }}>
+                                                        {{ (old('concepto_id', $novedad->concepto_id) == $concepto->id) ? 'selected' : '' }}>
                                                     {{ $concepto->codigo }} - {{ $concepto->nombre }}
                                                 </option>
                                             @endforeach
                                         </select>
                                         @if($novedad->procesada)
-                                            <input type="hidden" name="concepto_nomina_id" value="{{ $novedad->concepto_nomina_id }}">
+                                            <input type="hidden" name="concepto_id" value="{{ $novedad->concepto_id }}">
                                         @endif
                                     </div>
 
@@ -104,12 +104,12 @@
                                         <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                                             Período (opcional)
                                         </label>
-                                        <select name="periodo_nomina_id" 
+                                        <select name="periodo_id" 
                                                 class="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 rounded-lg">
                                             <option value="">Sin período específico</option>
                                             @foreach($periodos as $periodo)
                                                 <option value="{{ $periodo->id }}" 
-                                                        {{ (old('periodo_nomina_id', $novedad->periodo_nomina_id) == $periodo->id) ? 'selected' : '' }}>
+                                                        {{ (old('periodo_id', $novedad->periodo_id) == $periodo->id) ? 'selected' : '' }}>
                                                     {{ $periodo->nombre }}
                                                 </option>
                                             @endforeach
@@ -120,8 +120,8 @@
                                         <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                                             Fecha de Novedad *
                                         </label>
-                                        <input type="date" name="fecha_novedad" 
-                                               value="{{ old('fecha_novedad', $novedad->fecha_novedad->format('Y-m-d')) }}" required
+                                        <input type="date" name="fecha" 
+                                               value="{{ old('fecha', $novedad->fecha) }}" required
                                                class="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 rounded-lg">
                                     </div>
                                 </div>
