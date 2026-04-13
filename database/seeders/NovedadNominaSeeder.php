@@ -37,12 +37,52 @@ class NovedadNominaSeeder extends Seeder
             ['periodo_id' => 11, 'month' => 6, 'year' => 2026, 'mes' => 'Junio 2026'],
         ];
         
+
+        // Función auxiliar para determinar estado y datos asociados
+        $generarEstado = function() {
+            $rand = rand(1, 100);
+            if ($rand <= 20) {
+                // 20% Pendiente
+                return [
+                    'estado' => 'pendiente',
+                    'aprobado_by' => null,
+                    'fecha_aprobacion' => null,
+                    'motivo_rechazo' => null,
+                ];
+            } elseif ($rand <= 85) {
+                // 65% Aprobada
+                return [
+                    'estado' => 'aprobada',
+                    'aprobado_by' => rand(1, 3), // Usuarios 1-3 aprueban
+                    'fecha_aprobacion' => now()->subDays(rand(1, 10)),
+                    'motivo_rechazo' => null,
+                ];
+            } else {
+                // 15% Rechazada
+                $motivos = [
+                    'Documentación incompleta',
+                    'Valor no corresponde al concepto',
+                    'Empleado no está asignado a este concepto',
+                    'Excede el límite permitido',
+                    'Período ya procesado',
+                    'Falta justificación',
+                ];
+                return [
+                    'estado' => 'rechazada',
+                    'aprobado_by' => rand(1, 3),
+                    'fecha_aprobacion' => now()->subDays(rand(5, 15)),
+                    'motivo_rechazo' => $motivos[rand(0, count($motivos) - 1)],
+                ];
+            }
+        };
+        
         foreach ($periodos as $periodo) {
             $fechaBase = Carbon::create($periodo['year'], $periodo['month'], 1);
             
             // ════ HORAS EXTRAS DIURNAS (30 novedades) ════
             for ($i = 0; $i < 5; $i++) {
                 $empId = $empleadosPorTipo['produccion'][$i % count($empleadosPorTipo['produccion'])];
+                $estado = $generarEstado();
                 $novedades[] = [
                     'empleado_id' => $empId,
                     'concepto_id' => 2, // HED
@@ -57,12 +97,12 @@ class NovedadNominaSeeder extends Seeder
                     'porcentaje_recargo' => 25.00,
                     'aplica_formula' => true,
                     'formula' => '(salario_basico/240)*1.25*cantidad',
-                    'estado' => rand(1, 100) <= 70 ? 'aprobada' : 'pendiente',
+                    'estado' => $estado['estado'],
                     'observaciones' => 'Horas extras diurnas - producción',
                     'archivo_soporte' => null,
-                    'aprobado_by' => null,
-                    'fecha_aprobacion' => null,
-                    'motivo_rechazo' => null,
+                    'aprobado_by' => $estado['aprobado_by'],
+                    'fecha_aprobacion' => $estado['fecha_aprobacion'],
+                    'motivo_rechazo' => $estado['motivo_rechazo'],
                     'created_by' => null,
                     'updated_by' => null,
                     'created_at' => now(),
@@ -74,6 +114,7 @@ class NovedadNominaSeeder extends Seeder
             // ════ HORAS EXTRAS NOCTURNAS (20 novedades) ════
             for ($i = 0; $i < 3; $i++) {
                 $empId = $empleadosPorTipo['tech'][$i % count($empleadosPorTipo['tech'])];
+                $estado = $generarEstado();
                 $novedades[] = [
                     'empleado_id' => $empId,
                     'concepto_id' => 3, // HEN
@@ -88,12 +129,12 @@ class NovedadNominaSeeder extends Seeder
                     'porcentaje_recargo' => 75.00,
                     'aplica_formula' => true,
                     'formula' => '(salario_basico/240)*1.75*cantidad',
-                    'estado' => rand(1, 100) <= 70 ? 'aprobada' : 'pendiente',
+                    'estado' => $estado['estado'],
                     'observaciones' => 'Horas extras nocturnas - soporte técnico',
                     'archivo_soporte' => null,
-                    'aprobado_by' => null,
-                    'fecha_aprobacion' => null,
-                    'motivo_rechazo' => null,
+                    'aprobado_by' => $estado['aprobado_by'],
+                    'fecha_aprobacion' => $estado['fecha_aprobacion'],
+                    'motivo_rechazo' => $estado['motivo_rechazo'],
                     'created_by' => null,
                     'updated_by' => null,
                     'created_at' => now(),
@@ -105,6 +146,7 @@ class NovedadNominaSeeder extends Seeder
             // ════ RECARGOS NOCTURNOS (15 novedades) ════
             for ($i = 0; $i < 3; $i++) {
                 $empId = $empleadosPorTipo['produccion'][$i % count($empleadosPorTipo['produccion'])];
+                $estado = $generarEstado();
                 $novedades[] = [
                     'empleado_id' => $empId,
                     'concepto_id' => 8, // RN - Recargo nocturno
@@ -119,12 +161,12 @@ class NovedadNominaSeeder extends Seeder
                     'porcentaje_recargo' => 35.00,
                     'aplica_formula' => true,
                     'formula' => '(salario_basico/240)*1.35*cantidad',
-                    'estado' => rand(1, 100) <= 70 ? 'aprobada' : 'pendiente',
+                    'estado' => $estado['estado'],
                     'observaciones' => 'Recargo nocturno',
                     'archivo_soporte' => null,
-                    'aprobado_by' => null,
-                    'fecha_aprobacion' => null,
-                    'motivo_rechazo' => null,
+                    'aprobado_by' => $estado['aprobado_by'],
+                    'fecha_aprobacion' => $estado['fecha_aprobacion'],
+                    'motivo_rechazo' => $estado['motivo_rechazo'],
                     'created_by' => null,
                     'updated_by' => null,
                     'created_at' => now(),
@@ -137,6 +179,7 @@ class NovedadNominaSeeder extends Seeder
             for ($i = 0; $i < 5; $i++) {
                 $empId = $empleadosPorTipo['vendedores'][$i % count($empleadosPorTipo['vendedores'])];
                 $comision = rand(200000, 1200000);
+                $estado = $generarEstado();
                 $novedades[] = [
                     'empleado_id' => $empId,
                     'concepto_id' => 7, // COM
@@ -151,12 +194,12 @@ class NovedadNominaSeeder extends Seeder
                     'porcentaje_recargo' => null,
                     'aplica_formula' => false,
                     'formula' => null,
-                    'estado' => rand(1, 100) <= 70 ? 'aprobada' : 'pendiente',
+                    'estado' => $estado['estado'],
                     'observaciones' => 'Comisión por ventas del período',
                     'archivo_soporte' => null,
-                    'aprobado_by' => null,
-                    'fecha_aprobacion' => null,
-                    'motivo_rechazo' => null,
+                    'aprobado_by' => $estado['aprobado_by'],
+                    'fecha_aprobacion' => $estado['fecha_aprobacion'],
+                    'motivo_rechazo' => $estado['motivo_rechazo'],
                     'created_by' => null,
                     'updated_by' => null,
                     'created_at' => now(),
@@ -169,6 +212,7 @@ class NovedadNominaSeeder extends Seeder
             foreach ($empleadosPorTipo['ejecutivos'] as $empId) {
                 if (rand(1, 100) <= 60) { // 60% probabilidad
                     $bono = rand(300000, 2000000);
+                    $estado = $generarEstado();
                     $novedades[] = [
                         'empleado_id' => $empId,
                         'concepto_id' => 6, // BON
@@ -183,12 +227,12 @@ class NovedadNominaSeeder extends Seeder
                         'porcentaje_recargo' => null,
                         'aplica_formula' => false,
                         'formula' => null,
-                        'estado' => rand(1, 100) <= 70 ? 'aprobada' : 'pendiente',
+                        'estado' => $estado['estado'],
                         'observaciones' => 'Bonificación por metas cumplidas',
                         'archivo_soporte' => null,
-                        'aprobado_by' => null,
-                        'fecha_aprobacion' => null,
-                        'motivo_rechazo' => null,
+                        'aprobado_by' => $estado['aprobado_by'],
+                        'fecha_aprobacion' => $estado['fecha_aprobacion'],
+                        'motivo_rechazo' => $estado['motivo_rechazo'],
                         'created_by' => null,
                         'updated_by' => null,
                         'created_at' => now(),
@@ -203,6 +247,7 @@ class NovedadNominaSeeder extends Seeder
                 if (rand(1, 100) <= 40) { // 40% probabilidad
                     $empId = $empleadosPorTipo['todos'][rand(0, count($empleadosPorTipo['todos']) - 1)];
                     $dias = rand(1, 5);
+                    $estado = $generarEstado();
                     $novedades[] = [
                         'empleado_id' => $empId,
                         'concepto_id' => 14, // INC
@@ -217,12 +262,12 @@ class NovedadNominaSeeder extends Seeder
                         'porcentaje_recargo' => null,
                         'aplica_formula' => false,
                         'formula' => null,
-                        'estado' => rand(1, 100) <= 70 ? 'aprobada' : 'pendiente',
+                        'estado' => $estado['estado'],
                         'observaciones' => 'Incapacidad médica - ' . $dias . ' días',
                         'archivo_soporte' => null,
-                        'aprobado_by' => null,
-                        'fecha_aprobacion' => null,
-                        'motivo_rechazo' => null,
+                        'aprobado_by' => $estado['aprobado_by'],
+                        'fecha_aprobacion' => $estado['fecha_aprobacion'],
+                        'motivo_rechazo' => $estado['motivo_rechazo'],
                         'created_by' => null,
                         'updated_by' => null,
                         'created_at' => now(),
@@ -237,6 +282,7 @@ class NovedadNominaSeeder extends Seeder
                 if (rand(1, 100) <= 30) { // 30% probabilidad
                     $empId = $empleadosPorTipo['todos'][rand(0, count($empleadosPorTipo['todos']) - 1)];
                     $cuota = rand(50000, 500000);
+                    $estado = $generarEstado();
                     $novedades[] = [
                         'empleado_id' => $empId,
                         'concepto_id' => 12, // CREDITO
@@ -251,12 +297,12 @@ class NovedadNominaSeeder extends Seeder
                         'porcentaje_recargo' => null,
                         'aplica_formula' => false,
                         'formula' => null,
-                        'estado' => rand(1, 100) <= 70 ? 'aprobada' : 'pendiente',
+                        'estado' => $estado['estado'],
                         'observaciones' => 'Cuota mensual de crédito',
                         'archivo_soporte' => null,
-                        'aprobado_by' => null,
-                        'fecha_aprobacion' => null,
-                        'motivo_rechazo' => null,
+                        'aprobado_by' => $estado['aprobado_by'],
+                        'fecha_aprobacion' => $estado['fecha_aprobacion'],
+                        'motivo_rechazo' => $estado['motivo_rechazo'],
                         'created_by' => null,
                         'updated_by' => null,
                         'created_at' => now(),

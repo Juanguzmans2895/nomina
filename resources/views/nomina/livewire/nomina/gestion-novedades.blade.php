@@ -133,11 +133,11 @@
                 <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
                     <div class="flex items-center">
                         <div class="flex-1">
-                            <p class="text-sm text-gray-600 dark:text-gray-400">Procesadas</p>
-                            <p class="text-2xl font-bold text-green-600">{{ $procesadas ?? 0 }}</p>
+                            <p class="text-sm text-gray-600 dark:text-gray-400">Aprobadas</p>
+                            <p class="text-2xl font-bold text-blue-600">{{ $aprobadas ?? 0 }}</p>
                         </div>
-                        <div class="bg-green-100 rounded-full p-3">
-                            <svg class="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <div class="bg-blue-100 rounded-full p-3">
+                            <svg class="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
                             </svg>
                         </div>
@@ -283,11 +283,4 @@
             </div>
         </div>
     </div>
-
-    {{-- DEBUG - ELIMINAR DESPUÉS --}}
-<div class="bg-red-100 p-4 mb-4">
-    <p>Total: {{ $totalNovedades ?? 'NO DEFINIDA' }}</p>
-    <p>Pendientes: {{ $pendientes ?? 'NO DEFINIDA' }}</p>
-    <p>Procesadas: {{ $procesadas ?? 'NO DEFINIDA' }}</p>
-</div>
 </x-app-layout>

@@ -2,6 +2,7 @@
 
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Nomina\NominaController;
+use App\Http\Controllers\Nomina\NovedadNominaController;
 use App\Http\Controllers\Admin\UserController;
 use App\Http\Controllers\Nomina\ReportesController;
 use App\Http\Controllers\Nomina\EmpleadoController;
@@ -96,6 +97,18 @@ Route::middleware(['auth'])->prefix('nomina')->name('nomina.')->group(function (
         Route::get('/activos', [ConceptoController::class, 'activos'])->name('activos');
     });
 
+    // PERÍODOS
+    Route::prefix('periodos')->name('periodos.')->group(function () {
+        Route::get('/', [PeriodoController::class, 'index'])->name('index');
+        Route::get('/crear', [PeriodoController::class, 'create'])->name('create');
+        Route::post('/', [PeriodoController::class, 'store'])->name('store');
+        Route::get('/{periodo}/editar', [PeriodoController::class, 'edit'])->name('edit');
+        Route::put('/{periodo}', [PeriodoController::class, 'update'])->name('update');
+        Route::delete('/{periodo}', [PeriodoController::class, 'destroy'])->name('destroy');
+        Route::post('/{periodo}/cerrar', [PeriodoController::class, 'cerrar'])->name('cerrar');
+        Route::post('/{periodo}/reabrir', [PeriodoController::class, 'reabrir'])->name('reabrir');
+    });
+
     // CENTROS DE COSTO
     Route::resource('centros-costo', CentroCostoController::class);
     
@@ -127,19 +140,24 @@ Route::middleware(['auth'])->prefix('nomina')->name('nomina.')->group(function (
     
     // NÓMINAS
     Route::prefix('nominas')->name('nominas.')->group(function () {
-        // Wizard de liquidación
+        // RUTAS ESTÁTICAS PRIMERO
+        Route::get('/', [NominaController::class, 'listaNominas'])->name('lista');
+        Route::post('/calcular', [NominaController::class, 'calcular'])->name('calcular');
         Route::get('/liquidar', [NominaController::class, 'liquidar'])->name('liquidar');
         Route::post('/wizard/guardar', [NominaController::class, 'guardarPasoWizard'])->name('wizard.guardar');
         Route::post('/procesar', [NominaController::class, 'procesar'])->name('procesar');
-        
-        // Gestión de nóminas
         Route::get('/historial', [NominaController::class, 'historial'])->name('historial');
+        Route::get('/plantilla', [NominaController::class, 'descargarPlantilla'])->name('plantilla');
+        
+        // RUTAS CON PARÁMETROS
+        Route::get('/{nomina}', [NominaController::class, 'show'])->name('show');
         Route::get('/{nomina}/detalles', [NominaController::class, 'detalles'])->name('detalles');
         Route::get('/{nomina}/editar', [NominaController::class, 'editar'])->name('editar');
+        Route::get('/{nomina}/exportar-excel', [NominaController::class, 'exportarExcel'])->name('exportarExcel');
         Route::put('/{nomina}', [NominaController::class, 'actualizar'])->name('actualizar');
         Route::delete('/{nomina}', [NominaController::class, 'eliminar'])->name('eliminar');
         
-        // Acciones de estado
+        // ACCIONES DE ESTADO
         Route::post('/{nomina}/aprobar', [NominaController::class, 'aprobar'])->name('aprobar');
         Route::post('/{nomina}/pagar', [NominaController::class, 'pagar'])->name('pagar');
         Route::post('/{nomina}/cerrar', [NominaController::class, 'cerrar'])->name('cerrar');
@@ -148,18 +166,23 @@ Route::middleware(['auth'])->prefix('nomina')->name('nomina.')->group(function (
     
     // NOVEDADES
     Route::prefix('novedades')->name('novedades.')->group(function () {
-        Route::get('/', [NominaController::class, 'novedades'])->name('index');
-        Route::get('/crear', [NominaController::class, 'crearNovedad'])->name('crear');
-        Route::post('/', [NominaController::class, 'guardarNovedad'])->name('store');
-        Route::get('/{novedad}/editar', [NominaController::class, 'editarNovedad'])->name('editar');
-        Route::put('/{novedad}', [NominaController::class, 'actualizarNovedad'])->name('update');
-        Route::delete('/{novedad}', [NominaController::class, 'eliminarNovedad'])->name('destroy');
-        
-        // Importación
+        // Rutas estáticas PRIMERO (evita conflictos con {novedad})
         Route::get('/importar', [NominaController::class, 'importarNovedades'])->name('importar');
         Route::post('/importar', [NominaController::class, 'procesarImportacion'])->name('procesar-importacion');
         Route::post('/importar/confirmar', [NominaController::class, 'confirmarImportacionNovedades'])->name('confirmar-importacion');
         Route::get('/plantilla', [NominaController::class, 'descargarPlantilla'])->name('plantilla');
+        Route::get('/crear', [NovedadNominaController::class, 'create'])->name('crear');
+        
+        // Rutas CRUD general
+        Route::get('/', [NovedadNominaController::class, 'index'])->name('index');
+        Route::post('/', [NovedadNominaController::class, 'store'])->name('store');
+        
+        // Rutas con parámetros (al final)
+        Route::get('/{novedad}/editar', [NovedadNominaController::class, 'edit'])->name('editar');
+        Route::put('/{novedad}', [NovedadNominaController::class, 'update'])->name('update');
+        Route::delete('/{novedad}', [NovedadNominaController::class, 'destroy'])->name('destroy');
+        Route::post('/{novedad}/aprobar', [NovedadNominaController::class, 'aprobar'])->name('aprobar');
+        Route::post('/{novedad}/rechazar', [NovedadNominaController::class, 'rechazar'])->name('rechazar');
     });
     
     // PROVISIONES

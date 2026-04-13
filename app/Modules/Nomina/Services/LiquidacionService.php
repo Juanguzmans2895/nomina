@@ -194,10 +194,13 @@ class LiquidacionService
             $auxilioTransporte = ($auxilioTransporte / 30) * $dias;
         }
         
+        // ══════════════════════════════════════════════════════════
+        // CRÍTICO: Buscar NOVEDADES APROBADAS (no pendientes)
+        // ══════════════════════════════════════════════════════════
         // Obtener novedades del empleado para este período
         $novedades = NovedadNomina::where('empleado_id', $empleado->id)
             ->where('periodo_id', $nomina->periodo_nomina_id)
-            ->where('estado', 'pendiente')
+            ->where('estado', 'aprobada')  // ← CORRECCIÓN: Debe ser 'aprobada', no 'pendiente'
             ->get();
         
         $horasExtras = 0;

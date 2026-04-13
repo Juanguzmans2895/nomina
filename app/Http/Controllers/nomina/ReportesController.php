@@ -35,12 +35,17 @@ class ReportesController extends Controller
     }
     
     /**
-     * Desprendible individual
+     * Desprendible individual - MEJORADO con novedades
      */
     public function desprendible($id)
     {
         $detalle = DetalleNomina::with(['nomina.periodo', 'nomina.tipo', 'empleado'])
             ->findOrFail($id);
+        
+        // Cargar conceptos y novedades asociadas
+        $nominaConceptos = \App\Modules\Nomina\Models\NominaConcepto::with('novedad')
+            ->where('nomina_detalle_id', $detalle->id)
+            ->get();
         
         // Datos de la empresa
         $empresa = [
@@ -68,82 +73,132 @@ class ReportesController extends Controller
         // Días trabajados
         $dias_trabajados = $detalle->dias_trabajados ?? 30;
         
-        // Salario básico y auxilio de transporte
-        $salario_basico = $detalle->salario_basico ?? 0;
-        $auxilio_transporte = $detalle->auxilio_transporte ?? 0;
+        // ══════════════════════════════════════════════════════════
+        // DEVENGADOS - Incluir novedades
+        // ══════════════════════════════════════════════════════════
+        $devengados = [];
+        $total_devengado = 0;
         
-        // DEVENGADOS
-        $devengados = [
-            ['concepto' => 'Salario Básico', 'valor' => $salario_basico],
-        ];
-        
-        if ($auxilio_transporte > 0) {
-            $devengados[] = ['concepto' => 'Auxilio de Transporte', 'valor' => $auxilio_transporte];
+        // Salario base
+        if ($detalle->salario_basico > 0) {
+            $devengados[] = ['concepto' => 'Salario Básico', 'valor' => $detalle->salario_basico, 'es_novedad' => false];
+            $total_devengado += $detalle->salario_basico;
         }
         
-        $total_devengado = $detalle->total_devengado ?? ($salario_basico + $auxilio_transporte);
+        // Auxilio de transporte
+        if ($detalle->auxilio_transporte > 0) {
+            $devengados[] = ['concepto' => 'Auxilio de Transporte', 'valor' => $detalle->auxilio_transporte, 'es_novedad' => false];
+            $total_devengado += $detalle->auxilio_transporte;
+        }
         
+        // Horas extras y otros devengados del detalle
+        $otrosDevengadosDetalle = [
+            'horas_extras_diurnas' => 'Horas Extras Diurnas',
+            'horas_extras_nocturnas' => 'Horas Extras Nocturnas',
+            'horas_extras_dominicales' => 'Horas Extras Dominicales',
+            'recargo_nocturno' => 'Recargo Nocturno',
+            'recargo_dominical' => 'Recargo Dominical',
+            'comisiones' => 'Comisiones',
+            'bonificaciones' => 'Bonificaciones',
+            'otros_devengados' => 'Otros Devengados',
+        ];
+        
+        foreach ($otrosDevengadosDetalle as $campo => $label) {
+            if ($detalle->{$campo} > 0) {
+                $devengados[] = ['concepto' => $label, 'valor' => $detalle->{$campo}, 'es_novedad' => false];
+                $total_devengado += $detalle->{$campo};
+            }
+        }
+        
+        // Novedades aplicadas
+        $novedadesDevengado = $nominaConceptos
+            ->filter(fn($c) => $c->esDevengado() && $c->novedad_nomina_id)
+            ->each(function($concepto) use (&$devengados, &$total_devengado) {
+                $devengados[] = [
+                    'concepto' => $concepto->nombre_concepto,
+                    'valor' => $concepto->valor,
+                    'es_novedad' => true,
+                    'novedad_id' => $concepto->novedad_nomina_id,
+                ];
+                $total_devengado += $concepto->valor;
+            });
+        
+        if ($total_devengado === 0) {
+            $total_devengado = $detalle->total_devengado ?? 0;
+        }
+        
+        // ══════════════════════════════════════════════════════════
         // DEDUCCIONES
-        $salud_empleado = $detalle->salud_empleado ?? ($salario_basico * 0.04);
-        $pension_empleado = $detalle->pension_empleado ?? ($salario_basico * 0.04);
-        $retencion = $detalle->retencion_fuente ?? 0;
+        // ══════════════════════════════════════════════════════════
+        $deducciones = [];
+        $total_deducciones = 0;
         
-        $deducciones = [
-            ['concepto' => 'Salud (4%)', 'valor' => $salud_empleado],
-            ['concepto' => 'Pensión (4%)', 'valor' => $pension_empleado],
+        $otrasDeduccionesDetalle = [
+            'salud_empleado' => 'Salud (4%)',
+            'pension_empleado' => 'Pensión (4%)',
+            'fondo_solidaridad' => 'Fondo de Solidaridad',
+            'retencion_fuente' => 'Retención en la Fuente',
+            'sindicato' => 'Afiliación Sindical',
+            'creditos' => 'Créditos',
+            'embargos' => 'Embargos',
+            'otras_deducciones' => 'Otras Deducciones',
         ];
         
-        if ($retencion > 0) {
-            $deducciones[] = ['concepto' => 'Retención en la Fuente', 'valor' => $retencion];
+        foreach ($otrasDeduccionesDetalle as $campo => $label) {
+            if ($detalle->{$campo} > 0) {
+                $deducciones[] = ['concepto' => $label, 'valor' => $detalle->{$campo}];
+                $total_deducciones += $detalle->{$campo};
+            }
         }
         
-        $total_deducciones = $detalle->total_deducciones ?? ($salud_empleado + $pension_empleado + $retencion);
+        if ($total_deducciones === 0) {
+            $total_deducciones = $detalle->total_deducciones ?? 0;
+        }
         
         // NETO A PAGAR
         $neto_pagar = $detalle->total_neto ?? ($total_devengado - $total_deducciones);
         
         // SEGURIDAD SOCIAL EMPLEADOR
-        $salud_empleador = $detalle->salud_empleador ?? ($salario_basico * 0.085);
-        $pension_empleador = $detalle->pension_empleador ?? ($salario_basico * 0.12);
-        $arl_empleador = $detalle->arl_empleador ?? ($salario_basico * 0.00522);
-        
-        $seguridad_social_empleador = [
-            ['concepto' => 'Salud Empleador (8.5%)', 'valor' => $salud_empleador],
-            ['concepto' => 'Pensión Empleador (12%)', 'valor' => $pension_empleador],
-            ['concepto' => 'ARL (0.522%)', 'valor' => $arl_empleador],
-        ];
+        $seguridad_social_empleador = [];
+        if ($detalle->salud_empleador > 0) {
+            $seguridad_social_empleador[] = ['concepto' => 'Salud Empleador (8.5%)', 'valor' => $detalle->salud_empleador];
+        }
+        if ($detalle->pension_empleador > 0) {
+            $seguridad_social_empleador[] = ['concepto' => 'Pensión Empleador (12%)', 'valor' => $detalle->pension_empleador];
+        }
+        if ($detalle->arl_empleador > 0) {
+            $seguridad_social_empleador[] = ['concepto' => 'ARL (0.522%)', 'valor' => $detalle->arl_empleador];
+        }
         
         // PARAFISCALES
-        $base_parafiscales = $salario_basico;
-        $sena = $base_parafiscales * 0.02;
-        $icbf = $base_parafiscales * 0.03;
-        $caja = $base_parafiscales * 0.04;
-        
-        $parafiscales = [
-            ['concepto' => 'SENA (2%)', 'valor' => $sena],
-            ['concepto' => 'ICBF (3%)', 'valor' => $icbf],
-            ['concepto' => 'Caja de Compensación (4%)', 'valor' => $caja],
-        ];
+        $parafiscales = [];
+        if ($detalle->sena > 0) {
+            $parafiscales[] = ['concepto' => 'SENA (2%)', 'valor' => $detalle->sena];
+        }
+        if ($detalle->icbf > 0) {
+            $parafiscales[] = ['concepto' => 'ICBF (3%)', 'valor' => $detalle->icbf];
+        }
+        if ($detalle->caja_compensacion > 0) {
+            $parafiscales[] = ['concepto' => 'Caja de Compensación (4%)', 'valor' => $detalle->caja_compensacion];
+        }
         
         // PROVISIONES
-        $base_provision = $salario_basico + $auxilio_transporte;
-        $cesantias = $base_provision * 0.0833;
-        $intereses_cesantias = $cesantias * 0.12 / 12;
-        $prima = $base_provision * 0.0833;
-        $vacaciones = $salario_basico * 0.0417;
-        
-        $provisiones = [
-            ['concepto' => 'Cesantías (8.33%)', 'valor' => $cesantias],
-            ['concepto' => 'Intereses sobre Cesantías (1%)', 'valor' => $intereses_cesantias],
-            ['concepto' => 'Prima de Servicios (8.33%)', 'valor' => $prima],
-            ['concepto' => 'Vacaciones (4.17%)', 'valor' => $vacaciones],
-        ];
+        $provisiones = [];
+        if ($detalle->cesantias > 0) {
+            $provisiones[] = ['concepto' => 'Cesantías (8.33%)', 'valor' => $detalle->cesantias];
+        }
+        if ($detalle->intereses_cesantias > 0) {
+            $provisiones[] = ['concepto' => 'Intereses Cesantías (1%)', 'valor' => $detalle->intereses_cesantias];
+        }
+        if ($detalle->prima_servicios > 0) {
+            $provisiones[] = ['concepto' => 'Prima de Servicios (8.33%)', 'valor' => $detalle->prima_servicios];
+        }
+        if ($detalle->vacaciones > 0) {
+            $provisiones[] = ['concepto' => 'Vacaciones (4.17%)', 'valor' => $detalle->vacaciones];
+        }
         
         // COSTO TOTAL EMPLEADOR
-        $costo_empleador = $neto_pagar + 
-                        $salud_empleador + $pension_empleador + $arl_empleador +
-                        $sena + $icbf + $caja +
-                        $cesantias + $intereses_cesantias + $prima + $vacaciones;
+        $costo_empleador = $detalle->costo_total_empleador ?? $neto_pagar;
         
         // INFORMACIÓN BANCARIA
         $banco = [

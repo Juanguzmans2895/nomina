@@ -1,0 +1,160 @@
+╔═══════════════════════════════════════════════════════════════════════════════╗
+║                    ✅ PROBLEMA RESUELTO: FORMULARIO ANIDADO                   ║
+╚═══════════════════════════════════════════════════════════════════════════════╝
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🐛 EL PROBLEMA: Formularios Anidados (HTML Inválido)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+ANTES (CÓDIGO INCORRECTO):
+
+<form action="{{ update }}" method="POST">     ← FORMULARIO PRINCIPAL
+  @csrf
+  @method('PUT')
+  
+  <!-- Campo: Empleado -->
+  <!-- Campo: Concepto -->
+  <!-- Campo: Período -->
+  
+  <!-- AQUÍ ESTABA EL PROBLEMA: formularios anidados -->
+  <form action="{{ aprobar }}" method="POST">   ← ❌ FORMULARIO DENTRO
+    @csrf
+    <button>✓ APROBAR</button>
+  </form>
+  
+  <form action="{{ rechazar }}" method="POST">  ← ❌ FORMULARIO DENTRO
+    @csrf
+    <button>✗ RECHAZAR</button>
+  </form>
+  
+  <button type="submit">Actualizar</button>     ← Botón del formulario externo
+</form>
+
+QUE SUCEDE EN EL NAVEGADOR:
+  1. El navegador detecta un <form> dentro de otro <form> (HTML inválido)
+  2. Cierra automáticamente los formularios internos
+  3. El botón "Aprobar" termina siendo parte del formulario externo
+  4. Cuando haces clic → Envía POST al formulario UPDATE
+  5. Resultado: Se actualiza en lugar de aprobar ❌
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+✅ LA SOLUCIÓN: Formularios Separados (HTML Válido)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+AHORA (CÓDIGO CORRECTO):
+
+<!-- SECCIÓN 1: ACCIONES (FUERA del formulario de edición) -->
+<div class="actions-section">
+  <form action="{{ aprobar }}" method="POST">   ← ✓ FORMULARIO INDEPENDIENTE
+    @csrf
+    <button>✓ APROBAR NOVEDAD</button>
+  </form>
+  
+  <form action="{{ rechazar }}" method="POST">  ← ✓ FORMULARIO INDEPENDIENTE
+    @csrf
+    <button>✗ RECHAZAR NOVEDAD</button>
+  </form>
+</div>
+
+<!-- SECCIÓN 2: EDICIÓN (FORMULARIO SEPARADO) -->
+<form action="{{ update }}" method="POST">      ← ✓ FORMULARIO PRINCIPAL
+  @csrf
+  @method('PUT')
+  
+  <!-- Campo: Empleado -->
+  <!-- Campo: Concepto -->
+  <!-- Campo: Período -->
+  
+  <button type="submit">Actualizar</button>
+</form>
+
+QUE SUCEDE EN EL NAVEGADOR:
+  1. El navegador ve dos formularios independientes (HTML válido)
+  2. Cuando haces clic en "Aprobar" → Envía POST a {{ aprobar }}
+  3. Cuando haces clic en "Actualizar" → Envía PUT a {{ update }}
+  4. Resultado: Cada botón hace su función correctamente ✅
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📋 CAMBIOS REALIZADOS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+ARCHIVO: resources/views/nomina/novedades/edit.blade.php
+
+1️⃣  SECCIÓN DE ACCIONES - MOVIDA AFUERA
+    • Creé una sección separada ANTES del formulario principal
+    • Los formularios de aprobar/rechazar están completamente independientes
+    • Cada uno con su propio @csrf
+
+2️⃣  FORMULARIO PRINCIPAL - SEPARADO
+    • El formulario de actualización está intacto
+    • Solo contiene campos editables y su botón "Actualizar"
+    • No hay formularios anidados
+
+3️⃣  ESTRUCTURA VISUAL
+    ┌─────────────────────────────────────────┐
+    │ ⚙️ CAMBIAR ESTADO DE LA NOVEDAD        │
+    │ ├─ ✓ APROBAR NOVEDAD [Formulario]      │
+    │ └─ ✗ RECHAZAR NOVEDAD [Formulario]     │
+    └─────────────────────────────────────────┘
+    
+    ┌─────────────────────────────────────────┐
+    │ DATOS DE LA NOVEDAD                    │
+    │ ├─ Empleado: [Input]                   │
+    │ ├─ Concepto: [Input]                   │
+    │ ├─ Período: [Input]                    │
+    │ └─ [Actualizar Novedad] [Atrás]        │
+    └─────────────────────────────────────────┘
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🎯 CÓMO PROBAR
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. Abre el navegador
+2. Ve a: http://nomina.test/nomina/novedades/244/editar
+3. Verás una sección azul en la parte superior
+4. Haz clic en: "✓ APROBAR NOVEDAD" (el botón VERDE grande)
+5. ESPERADO: El estado cambia a "Aprobada" → ✅ FUNCIONA
+6. La página se recarga con la confirmación
+
+PRUEBA 2 - Actualizar datos:
+1. Crea una NUEVA novedad pendiente
+2. En la sección de "DATOS DE LA NOVEDAD" cambia algo (ej: observaciones)
+3. Haz clic en: "💾 Actualizar Novedad"
+4. ESPERADO: Los datos se guardan, el estado sigue siendo "Pendiente" → ✅ FUNCIONA
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📊 COMPARATIVA ANTES Y DESPUÉS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Acción                   | ANTES           | AHORA
+─────────────────────────┼─────────────────┼──────────────
+Clic en "Aprobar"        | Actualiza datos | Aprueba ✅
+Clic en "Actualizar"     | Actualiza datos | Actualiza ✅
+Form estructura HTML     | INVÁLIDA ❌     | VÁLIDA ✅
+Formularios anidados     | SÍ ❌           | NO ✅
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🔧 DETALLES TÉCNICOS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Rutas involucradas:
+  • POST /nomina/novedades/{id}/aprobar    → NovedadNominaController@aprobar
+  • POST /nomina/novedades/{id}/rechazar   → NovedadNominaController@rechazar
+  • PUT /nomina/novedades/{id}             → NovedadNominaController@update
+
+Métodos del modelo (actualizados):
+  • NovedadNomina::aprobar()     → actualiza estado a "aprobada"
+  • NovedadNomina::rechazar()    → actualiza estado a "rechazada"
+
+Validaciones:
+  • Solo se puede aprobar/rechazar si estado === "pendiente"
+  • El controlador verifica esto antes de ejecutar
+  • Mensajes de error descriptivos si no se cumple
+
+═══════════════════════════════════════════════════════════════════════════════
+
+✨ CONCLUSIÓN: El problema era una violación de las especificaciones HTML.
+   Los formularios no deben estar anidados. Ahora están separados correctamente
+   y cada uno se envía a su ruta correspondiente.
+
+═══════════════════════════════════════════════════════════════════════════════

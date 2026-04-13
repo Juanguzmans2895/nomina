@@ -88,11 +88,19 @@ class GestionNovedades extends Component
         $conceptos = ConceptoNomina::activos()->where('tipo', 'novedad')->orderBy('codigo')->get();
         $periodos = PeriodoNomina::abiertos()->orderByDesc('anio')->orderByDesc('mes')->get();
 
+        // Contadores
+        $totalNovedades = NovedadNomina::count();
+        $pendientes = NovedadNomina::where('estado', 'pendiente')->count();
+        $procesadas = NovedadNomina::where('estado', 'aplicada')->count();
+
         return view('nomina.livewire.nomina.gestion-novedades', [
             'novedades' => $novedades,
             'empleados' => $empleados,
             'conceptos' => $conceptos,
             'periodos' => $periodos,
+            'totalNovedades' => $totalNovedades,
+            'pendientes' => $pendientes,
+            'procesadas' => $procesadas,
         ]);
     }
 

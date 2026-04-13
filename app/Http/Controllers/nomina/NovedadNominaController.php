@@ -73,16 +73,16 @@ class NovedadNominaController extends Controller
         // ══════════════════════════════════════════════════════════
         $totalNovedades = NovedadNomina::count();
         $pendientes = NovedadNomina::where('estado', 'pendiente')->count();
-        $procesadas = NovedadNomina::where('estado', 'aplicada')->count(); // ← CORREGIDO
+        $aprobadas = NovedadNomina::where('estado', 'aprobada')->count(); // ← Aprobadas en lugar de Aplicadas
 
         // ══════════════════════════════════════════════════════════
         // RUTA CORRECTA DE LA VISTA
         // ══════════════════════════════════════════════════════════
-        return view('nomina.novedades.gestion-novedades', compact(
+        return view('nomina.livewire.nomina.gestion-novedades', compact(
             'novedades',
             'totalNovedades',
             'pendientes',
-            'procesadas'
+            'aprobadas'
         ));
     }
 
@@ -99,11 +99,19 @@ class NovedadNominaController extends Controller
             ->orderBy('codigo')
             ->get();
         
-        $periodos = PeriodoNomina::where('estado', 'activo')
-            ->where('anio', '>=', now()->year - 1)
+        // ══════════════════════════════════════════════════════════
+        // CORRECCIÓN: SOLO MOSTRAR PERÍODOS ABIERTOS
+        // ══════════════════════════════════════════════════════════
+        $periodos = PeriodoNomina::where('estado', 'abierto')
+            ->where('activo', true)
             ->orderBy('anio', 'desc')
             ->orderBy('mes', 'desc')
             ->get();
+
+        if ($periodos->isEmpty()) {
+            return redirect()->route('nomina.novedades.index')
+                ->with('warning', 'No hay períodos abiertos. Cree un nuevo período para poder registrar novedades.');
+        }
 
         return view('nomina.novedades.create', compact('empleados', 'conceptos', 'periodos'));
     }
@@ -142,11 +150,18 @@ class NovedadNominaController extends Controller
         
         $empleados = Empleado::where('estado', 'activo')->orderBy('primer_nombre')->get();
         $conceptos = ConceptoNomina::where('activo', true)->orderBy('codigo')->get();
-        $periodos = PeriodoNomina::where('estado', 'activo')
-            ->where('anio', '>=', now()->year - 1)
-            ->orderBy('anio', 'desc')
-            ->orderBy('mes', 'desc')
-            ->get();
+        
+        // ══════════════════════════════════════════════════════════
+        // SOLO MOSTRAR PERÍODOS ABIERTOS (o el actual si está cerrado)
+        // ══════════════════════════════════════════════════════════
+        $periodos = PeriodoNomina::where(function($q) {
+            $q->where('estado', 'abierto')
+              ->where('activo', true)
+              ->orWhere('id', PeriodoNomina::where('estado', 'abierto')->value('id'));
+        })
+        ->orderBy('anio', 'desc')
+        ->orderBy('mes', 'desc')
+        ->get();
 
         return view('nomina.novedades.edit', compact('novedad', 'empleados', 'conceptos', 'periodos'));
     }
@@ -207,15 +222,29 @@ class NovedadNominaController extends Controller
      */
     public function aprobar($id)
     {
-        $novedad = NovedadNomina::findOrFail($id);
+        try {
+            $novedad = NovedadNomina::findOrFail($id);
 
-        if ($novedad->aprobar(auth()->id())) {
+            // Verificar que esté en estado pendiente
+            if ($novedad->estado !== 'pendiente') {
+                return redirect()->back()
+                    ->with('error', 'Solo se pueden aprobar novedades en estado pendiente');
+            }
+
+            $aprobado = $novedad->aprobar(auth()->id());
+            
+            if ($aprobado) {
+                return redirect()->back()
+                    ->with('success', 'Novedad aprobada exitosamente');
+            } else {
+                return redirect()->back()
+                    ->with('error', 'No se pudo aprobar la novedad. Intente nuevamente.');
+            }
+        } catch (\Exception $e) {
+            \Log::error('Error al aprobar novedad: ' . $e->getMessage());
             return redirect()->back()
-                ->with('success', 'Novedad aprobada exitosamente');
+                ->with('error', 'Error al aprobar la novedad: ' . $e->getMessage());
         }
-
-        return redirect()->back()
-            ->with('error', 'No se pudo aprobar la novedad');
     }
 
     /**
@@ -227,14 +256,28 @@ class NovedadNominaController extends Controller
             'motivo_rechazo' => 'required|string|max:500',
         ]);
 
-        $novedad = NovedadNomina::findOrFail($id);
+        try {
+            $novedad = NovedadNomina::findOrFail($id);
 
-        if ($novedad->rechazar($request->motivo_rechazo, auth()->id())) {
+            // Verificar que esté en estado pendiente
+            if ($novedad->estado !== 'pendiente') {
+                return redirect()->back()
+                    ->with('error', 'Solo se pueden rechazar novedades en estado pendiente');
+            }
+
+            $rechazado = $novedad->rechazar($request->motivo_rechazo, auth()->id());
+            
+            if ($rechazado) {
+                return redirect()->back()
+                    ->with('success', 'Novedad rechazada exitosamente');
+            } else {
+                return redirect()->back()
+                    ->with('error', 'No se pudo rechazar la novedad. Intente nuevamente.');
+            }
+        } catch (\Exception $e) {
+            \Log::error('Error al rechazar novedad: ' . $e->getMessage());
             return redirect()->back()
-                ->with('success', 'Novedad rechazada');
+                ->with('error', 'Error al rechazar la novedad: ' . $e->getMessage());
         }
-
-        return redirect()->back()
-            ->with('error', 'No se pudo rechazar la novedad');
     }
 }

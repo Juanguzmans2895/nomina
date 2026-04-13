@@ -11,6 +11,7 @@ use App\Modules\Nomina\Models\NovedadNomina;
 use App\Modules\Nomina\Models\ConceptoNomina;
 use App\Modules\Nomina\Models\PeriodoNomina;
 use Carbon\Carbon;
+use Maatwebsite\Excel\Facades\Excel;
 
 class NominaController extends Controller
 {
@@ -293,7 +294,7 @@ class NominaController extends Controller
         $pendientes = NovedadNomina::where('estado', 'pendiente')->count();
         $procesadas = NovedadNomina::where('estado', 'aplicada')->count(); // ← CORREGIDO
  
-        return view('nomina.gestion-novedades', compact(
+        return view('nomina.novedades.gestion-novedades', compact(
             'novedades',
             'totalNovedades',
             'pendientes',
@@ -1840,4 +1841,154 @@ class NominaController extends Controller
             ->with('error', 'No se pudo rechazar la novedad');
     }
 
+    /**
+     * ═══════════════════════════════════════════════════════════
+     * MÉTODOS ADAPTADOS A DOCUMENTO EXCEL 2026
+     * ═══════════════════════════════════════════════════════════
+     */
+
+    /**
+     * Calcular nómina completa usando NominaCalculoService
+     */
+    public function calcular(Request $request)
+    {
+        $periodoId = $request->get('periodo_id');
+        $empleadoId = $request->get('empleado_id');
+
+        $periodo = PeriodoNomina::findOrFail($periodoId);
+        
+        // Obtener o crear nómina
+        $nomina = Nomina::firstOrCreate(
+            ['periodo_nomina_id' => $periodo->id],
+            [
+                'numero_nomina' => 'NOM-' . $periodo->codigo,
+                'nombre' => "Nómina {$periodo->nombre}",
+                'tipo_nomina_id' => 1,
+                'fecha_inicio' => $periodo->fecha_inicio,
+                'fecha_fin' => $periodo->fecha_fin,
+                'estado' => 'prenomina',
+            ]
+        );
+
+        // Obtener empleados a calcular
+        $empleados = Empleado::where('estado', 'activo');
+        if ($empleadoId) {
+            $empleados = $empleados->where('id', $empleadoId);
+        }
+        $empleados = $empleados->get();
+
+        $servicio = new \App\Services\NominaCalculoService();
+        $totalNeto = 0;
+        $empleadosCalculados = 0;
+
+        foreach ($empleados as $empleado) {
+            $servicio->calcularNomina($empleado, $periodo, $nomina);
+            $totalNeto += $empleado->detallesNomina()->where('nomina_id', $nomina->id)->sum('total_neto');
+            $empleadosCalculados++;
+        }
+
+        // Actualizar nómina
+        $nomina->update([
+            'total_neto' => $totalNeto,
+            'numero_empleados' => $empleadosCalculados,
+            'estado' => 'aprobada',
+        ]);
+
+        return redirect()->route('nomina.nominas.show', $nomina)
+            ->with('success', "Nómina calculada para {$empleadosCalculados} empleados");
+    }
+
+    /**
+     * Mostrar detalles completos de la nómina (como documento Excel)
+     */
+    public function show(Nomina $nomina)
+    {
+        $nomina->load(['periodo', 'detalles.empleado', 'novedades.concepto']);
+        
+        $conceptos = ConceptoNomina::where('visible_colilla', true)
+            ->orderBy('orden_colilla')
+            ->get()
+            ->groupBy('agrupador');
+
+        // Preparar datos para vista tipo tabla Excel
+        $tabla = [];
+        $totalDevengado = 0;
+        $totalDeducciones = 0;
+        $totalNeto = 0;
+        $totalAportesEmpleador = 0;
+
+        foreach ($nomina->detalles as $detalle) {
+            $row = [
+                'empleado' => $detalle->empleado->numero_documento ?? 'N/A',
+                'nombre' => $detalle->empleado->nombre_completo ?? 'N/A',
+                'cargo' => $detalle->empleado->cargo ?? 'N/A',
+                'salario_basico' => $detalle->salario_basico ?? 0,
+                'dias_trabajados' => $detalle->dias_trabajados ?? 30,
+                'horas_extras_diurnas' => $detalle->horas_extras_diurnas ?? 0,
+                'horas_extras_nocturnas' => $detalle->horas_extras_nocturnas ?? 0,
+                'recargo_nocturno' => $detalle->recargo_nocturno ?? 0,
+                'recargo_dominical' => $detalle->recargo_dominical ?? 0,
+                'auxilio_transporte' => $detalle->auxilio_transporte ?? 0,
+                'bonificaciones' => $detalle->bonificaciones ?? 0,
+                'comisiones' => $detalle->comisiones ?? 0,
+                'total_devengado' => $detalle->total_devengado ?? 0,
+                'salud_empleado' => $detalle->salud_empleado ?? 0,
+                'pension_empleado' => $detalle->pension_empleado ?? 0,
+                'fondo_solidaridad' => $detalle->fondo_solidaridad ?? 0,
+                'otros_descuentos' => $detalle->otras_deducciones ?? 0,
+                'total_descuentos' => $detalle->total_deducciones ?? 0,
+                'total_neto' => $detalle->total_neto ?? 0,
+                'cesantias' => $detalle->cesantias ?? 0,
+                'intereses_cesantias' => $detalle->intereses_cesantias ?? 0,
+                'prima' => $detalle->prima_servicios ?? 0,
+                'vacaciones' => $detalle->vacaciones ?? 0,
+                'salud_empleador' => $detalle->salud_empleador ?? 0,
+                'pension_empleador' => $detalle->pension_empleador ?? 0,
+                'arl' => $detalle->arl_empleador ?? 0,
+                'caja_compensacion' => $detalle->caja_compensacion ?? 0,
+                'sena' => $detalle->sena ?? 0,
+                'icbf' => $detalle->icbf ?? 0,
+            ];
+
+            $tabla[] = $row;
+            $totalDevengado += $row['total_devengado'];
+            $totalDeducciones += $row['total_descuentos'];
+            $totalNeto += $row['total_neto'];
+            $totalAportesEmpleador += ($row['salud_empleador'] + $row['pension_empleador'] + $row['arl'] + $row['caja_compensacion'] + $row['sena'] + $row['icbf']);
+        }
+
+        return view('nomina.nominas.show', compact('nomina', 'tabla', 'conceptos', 'totalDevengado', 'totalDeducciones', 'totalNeto', 'totalAportesEmpleador'));
+    }
+
+    /**
+     * Listar todas las nóminas
+     */
+    public function listaNominas(Request $request)
+    {
+        $query = Nomina::with(['tipo', 'periodo']);
+
+        if ($request->filled('estado')) {
+            $query->where('estado', $request->estado);
+        }
+
+        if ($request->filled('periodo')) {
+            $query->where('periodo_nomina_id', $request->periodo);
+        }
+
+        $nominas = $query->orderByDesc('fecha_inicio')->paginate(15);
+        $periodos = PeriodoNomina::orderByDesc('codigo')->get();
+
+        return view('nomina.nominas.lista', compact('nominas', 'periodos'));
+    }
+
+    /**
+     * Exportar nómina a Excel
+     */
+    public function exportarExcel(Nomina $nomina)
+    {
+        return Excel::download(
+            new \App\Exports\NominaExport($nomina),
+            "nomina_{$nomina->numero_nomina}.xlsx"
+        );
+    }
 }
